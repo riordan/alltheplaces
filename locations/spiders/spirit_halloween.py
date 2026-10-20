@@ -4,6 +4,7 @@ import re
 import scrapy
 
 from locations.items import Feature
+from locations.pipelines.address_clean_up import merge_address_lines
 
 
 class SpiritHalloweenSpider(scrapy.Spider):
@@ -18,9 +19,13 @@ class SpiritHalloweenSpider(scrapy.Spider):
         )
         hours = app_json[0]["openingHours"].replace(" - ", "-").split()
         hours = [re.sub(r"[:]$", "", day_hour) for day_hour in hours]
+        # Location hint such as "Former JoAnn" or "Next to Target", shown only in the page's own address block.
+        address_two = response.xpath(
+            'normalize-space(//div[contains(@class, "address") and contains(@class, "fc-black")]/div[@class="address-two"])'
+        ).get()
 
         props = {
-            "addr_full": app_json[0]["address"]["streetAddress"],
+            "addr_full": merge_address_lines([app_json[0]["address"]["streetAddress"], address_two]),
             "city": app_json[0]["address"]["addressLocality"],
             "state": app_json[0]["address"]["addressRegion"],
             "postcode": app_json[0]["address"]["postalCode"],
