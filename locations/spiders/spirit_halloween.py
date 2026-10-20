@@ -1,56 +1,19 @@
-import json
-import re
-
-import scrapy
+from typing import Iterable
 
 from locations.items import Feature
 from locations.pipelines.address_clean_up import merge_address_lines
+from locations.storefinders.rio_seo import RioSeoSpider
 
 
-class SpiritHalloweenSpider(scrapy.Spider):
+class SpiritHalloweenSpider(RioSeoSpider):
     name = "spirit_halloween"
     item_attributes = {"brand": "Spirit Halloween", "brand_wikidata": "Q25212133"}
-    allowed_domains = ("stores.spirithalloween.com",)
-    start_urls = ("http://stores.spirithalloween.com/",)
+    end_point = "https://maps.spirithalloween.com"
 
-    def parse_stores(self, response):
-        app_json = json.loads(
-            response.xpath('normalize-space(//script[@type="application/ld+json"]/text())').extract_first()
+    def post_process_feature(self, feature: Feature, location: dict) -> Iterable[Feature]:
+        feature["branch"] = feature.pop("name")
+        # Location hint such as "Former JoAnn" or "Next to Target".
+        feature["street_address"] = merge_address_lines(
+            [feature["street_address"], location.get("location_address_description")]
         )
-        hours = app_json[0]["openingHours"].replace(" - ", "-").split()
-        hours = [re.sub(r"[:]$", "", day_hour) for day_hour in hours]
-        # Location hint such as "Former JoAnn" or "Next to Target", shown only in the page's own address block.
-        address_two = response.xpath(
-            'normalize-space(//div[contains(@class, "address") and contains(@class, "fc-black")]/div[@class="address-two"])'
-        ).get()
-
-        props = {
-            "addr_full": merge_address_lines([app_json[0]["address"]["streetAddress"], address_two]),
-            "city": app_json[0]["address"]["addressLocality"],
-            "state": app_json[0]["address"]["addressRegion"],
-            "postcode": app_json[0]["address"]["postalCode"],
-            "phone": app_json[0]["address"]["telephone"],
-            "lat": float(app_json[0]["geo"]["latitude"]),
-            "lon": float(app_json[0]["geo"]["longitude"]),
-            "opening_hours": "; ".join(["{} {}".format(x[0], x[1]) for x in zip(*[iter(hours)] * 2)]),
-            "ref": response.url,
-            "name": app_json[0]["mainEntityOfPage"]["breadcrumb"]["itemListElement"][0]["item"]["name"],
-            "website": response.url,
-        }
-
-        return Feature(**props)
-
-    def parse_city_stores(self, response):
-        stores = response.xpath('//div[@class="map-list-item-info"]/a/@href').extract()
-        for store in stores:
-            yield scrapy.Request(response.urljoin(store), callback=self.parse_stores)
-
-    def parse_state(self, response):
-        city_urls = response.xpath('//div[@class="map-list-item is-single"]/a/@href').extract()
-        for path in city_urls:
-            yield scrapy.Request(response.urljoin(path), callback=self.parse_city_stores)
-
-    def parse(self, response):
-        urls = response.xpath('//div[@class="map-list-item is-single"]/a/@href').extract()
-        for path in urls:
-            yield scrapy.Request(response.urljoin(path), callback=self.parse_state)
+        yield feature
