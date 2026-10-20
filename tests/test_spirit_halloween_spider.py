@@ -1,5 +1,3 @@
-# ABOUTME: Tests the Spirit Halloween spider store page parser against saved store page fixtures.
-# ABOUTME: Checks that the store's own address line two (e.g. "Former JoAnn") is kept in the address.
 from scrapy.http import HtmlResponse
 
 from locations.spiders.spirit_halloween import SpiritHalloweenSpider
